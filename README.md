@@ -2,7 +2,7 @@
 
 **Brand Brawl** — a Tekken-style 2D fighter where PC makers collide with silicon titans.
 
-Built in **Python + pygame** with **Tekken-inspired 3D fighter renders**, unique character designs per brand, blood hit FX, and a neon arena stage.
+Built in **Python + pygame** with **articulated solid fighters** (animated limbs — not stiff cardboard cutouts), jump / air kicks, dash movement, and heavy blood / fire / explosion FX.
 
 Local vs local, vs CPU, and Story Mode. Every fighter has Tekken-style attributes and a signature special.
 
@@ -73,11 +73,12 @@ Each fighter has **HP · Power · Speed · Defense · Reach · Special** ratings
 | Action | Player 1 | Player 2 |
 |---|---|---|
 | Move | `A` `D` | `←` `→` |
-| Jump | `W` | `↑` |
+| Dash | `Left Shift` + `A`/`D` | `Right Shift` + arrows |
+| Jump (double-hop in air) | `W` | `↑` |
 | Block | `S` | `↓` |
-| Punch | `J` | `N` |
-| Kick | `K` | `M` |
-| **Special** (meter ≥ 60%) | `L` | `,` |
+| Punch (works in air) | `J` | `N` |
+| Kick / **Air Kick** | `K` | `M` |
+| **Special** (meter ≥ 55%) | `L` | `,` |
 
 Menu: `Enter` confirm · `Esc` back · `Tab` switch team on select screen.
 
