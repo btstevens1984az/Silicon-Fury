@@ -1,6 +1,6 @@
 # SILICON FURY
 
-**Brand Brawl** — a Tekken-style 2D fighter where PC makers collide with silicon titans.
+**Brand Brawl** — a 2D fighter where PC makers collide with silicon titans.
 
 Built in **Python + pygame** with **Tekken-inspired 3D fighter renders**, unique character designs per brand, blood hit FX, and a neon arena stage.
 
