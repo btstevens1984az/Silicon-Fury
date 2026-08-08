@@ -2,7 +2,9 @@
 
 **Brand Brawl** — a Tekken-style 2D fighter where PC makers collide with silicon titans.
 
-Built in **Python + pygame**. Local vs local, vs CPU, and Story Mode. Every fighter has Tekken-like attributes and a signature special.
+Built in **Python + pygame** with **Tekken-inspired 3D fighter renders**, unique character designs per brand, blood hit FX, and a neon arena stage.
+
+Local vs local, vs CPU, and Story Mode. Every fighter has Tekken-style attributes and a signature special.
 
 <p align="center">
   <img src="media/gifs/03-versus-brawl.gif" alt="Versus brawl gameplay" width="100%" />
