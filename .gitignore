@@ -13,5 +13,6 @@ media/frames/
 *.egg-info/
 dist/
 build/
-media/frames/
 media/preview_*.png
+web/node_modules/
+web/dist/
