@@ -17,6 +17,7 @@ from silicon_fury.config import (
     FPS,
     GOLD,
     GREEN,
+    GROUND_Y,
     HEIGHT,
     PANEL,
     RED,
@@ -26,7 +27,9 @@ from silicon_fury.config import (
     WHITE,
     WIDTH,
 )
-from silicon_fury.assets import fighter_sprite, stage_bg
+from silicon_fury.assets import stage_bg
+from silicon_fury.body import draw_fighter_body
+from silicon_fury.effects import EffectWorld
 from silicon_fury.fighter import Fighter
 
 
@@ -68,6 +71,7 @@ class SiliconFury:
         self.msg_t = 0
         self.shake = 0
         self.hitstops = 0
+        self.fx = EffectWorld()
 
         self.capture_dir = capture_dir
         self.auto_demo = auto_demo
@@ -84,13 +88,15 @@ class SiliconFury:
     def start_fight(self, c1: Character, c2: Character, p2_cpu: bool) -> None:
         self.f1 = Fighter(c1, 280, facing=1, is_cpu=False)
         self.f2 = Fighter(c2, WIDTH - 280, facing=-1, is_cpu=p2_cpu)
-        self.cpu = CPUBrain(0.7 if self.mode != "story" else 0.55 + self.story_stage * 0.08)
+        self.cpu = CPUBrain(0.75 if self.mode != "story" else 0.58 + self.story_stage * 0.08)
         self.round_time = 99.0
         self.round_num = 1
         self.ko_timer = 0
+        self.fx.clear()
         self.scene = "fight"
         self.msg = "FIGHT!"
         self.msg_t = 90
+        self.fx.fire_burst(WIDTH // 2, GROUND_Y - 20, 0.5)
 
     def reset_round(self, keep_wins: bool = True) -> None:
         assert self.f1 and self.f2 and self.p1_char and self.p2_char
@@ -101,6 +107,7 @@ class SiliconFury:
             self.f1.round_wins, self.f2.round_wins = w1, w2
         self.round_time = 99.0
         self.ko_timer = 0
+        self.fx.clear()
         self.msg = f"ROUND {self.round_num}"
         self.msg_t = 70
 
@@ -185,8 +192,12 @@ class SiliconFury:
         assert self.f1 and self.f2
         if self.ko_timer > 0:
             return
-        # Player 1
-        if keys[pygame.K_a]:
+        # Player 1 — freer movement + dash (Left Shift)
+        if keys[pygame.K_LSHIFT] and keys[pygame.K_a]:
+            self.f1.dash(-1)
+        elif keys[pygame.K_LSHIFT] and keys[pygame.K_d]:
+            self.f1.dash(1)
+        elif keys[pygame.K_a]:
             self.f1.move(-1)
         elif keys[pygame.K_d]:
             self.f1.move(1)
@@ -198,13 +209,17 @@ class SiliconFury:
         if keys[pygame.K_k]:
             self.f1.kick()
         if keys[pygame.K_l]:
-            if self.f1.special():
+            if self.f1.special(self.fx):
                 self.msg = self.f1.char.special_name
                 self.msg_t = 40
-                self.shake = 12
+                self.shake = 14
 
         if self.mode == "1v1" and not self.f2.is_cpu:
-            if keys[pygame.K_LEFT]:
+            if keys[pygame.K_RSHIFT] and keys[pygame.K_LEFT]:
+                self.f2.dash(-1)
+            elif keys[pygame.K_RSHIFT] and keys[pygame.K_RIGHT]:
+                self.f2.dash(1)
+            elif keys[pygame.K_LEFT]:
                 self.f2.move(-1)
             elif keys[pygame.K_RIGHT]:
                 self.f2.move(1)
@@ -216,10 +231,10 @@ class SiliconFury:
             if keys[pygame.K_m]:
                 self.f2.kick()
             if keys[pygame.K_COMMA]:
-                if self.f2.special():
+                if self.f2.special(self.fx):
                     self.msg = self.f2.char.special_name
                     self.msg_t = 40
-                    self.shake = 12
+                    self.shake = 14
 
     # ---------- Combat ----------
     def resolve_hits(self) -> None:
@@ -228,42 +243,46 @@ class SiliconFury:
             box = atk.attack_box()
             if not box or atk.attack_hit:
                 continue
-            # normalize negative width rects
             r = box.copy()
             if r.width < 0:
                 r.x += r.width
                 r.width = abs(r.width)
             if r.colliderect(dfn.body_box()):
                 atk.attack_hit = True
-                if atk.state == "punch":
-                    dmg, knock = atk.punch_dmg, 6
-                elif atk.state == "kick":
-                    dmg, knock = atk.kick_dmg, 8
+                kind = atk.state
+                if kind == "punch":
+                    dmg, knock = atk.punch_dmg, 7.5
+                elif kind in {"kick", "air_kick"}:
+                    dmg, knock = atk.kick_dmg * (1.1 if kind == "air_kick" else 1.0), 9.5
                 else:
-                    dmg, knock = atk.special_dmg, 14
-                    self.shake = 16
-                dfn.take_hit(dmg, knock, atk.facing)
-                atk.gain_meter(12)
+                    dmg, knock = atk.special_dmg, 16
+                    self.shake = 18
+                dfn.take_hit(dmg, knock, atk.facing, self.fx, kind=kind)
+                atk.gain_meter(14)
                 atk.combo += 1
-                self.hitstops = 3
+                # Short hitstop — keeps combat snappy/seamless
+                self.hitstops = 2 if kind == "punch" else 3
+                self.shake = max(self.shake, 8 if kind != "special" else 18)
 
     def update_fight(self) -> None:
         assert self.f1 and self.f2
         if self.hitstops > 0:
             self.hitstops -= 1
+            self.fx.update()
             return
 
         if self.ko_timer == 0:
             self.round_time = max(0.0, self.round_time - 1 / FPS)
             if self.f2.is_cpu and self.cpu:
-                self.cpu.step(self.f2, self.f1)
+                self.cpu.step(self.f2, self.f1, self.fx)
 
             self.f1.update()
             self.f2.update()
-            # Face each other when idle
-            if self.f1.state == "idle":
+            self.fx.update()
+            # Face each other when idle / walking
+            if self.f1.state in {"idle", "walk"}:
                 self.f1.facing = 1 if self.f2.x > self.f1.x else -1
-            if self.f2.state == "idle":
+            if self.f2.state in {"idle", "walk"}:
                 self.f2.facing = 1 if self.f1.x > self.f2.x else -1
 
             self.resolve_hits()
@@ -274,25 +293,27 @@ class SiliconFury:
                     if self.f1.hp >= self.f2.hp:
                         self.f2.hp = 0
                         self.f2.set_state("ko", 120)
+                        self.fx.explosion(self.f2.x, self.f2.y - 80, (255, 80, 40), 1.4)
                     else:
                         self.f1.hp = 0
                         self.f1.set_state("ko", 120)
+                        self.fx.explosion(self.f1.x, self.f1.y - 80, (255, 80, 40), 1.4)
                 winner = self.f1 if self.f1.hp > 0 else self.f2
                 winner.round_wins += 1
                 self.msg = "K.O." if min(self.f1.hp, self.f2.hp) <= 0 else "TIME!"
                 self.msg_t = 80
-                self.shake = 20
+                self.shake = 22
 
         else:
             self.ko_timer += 1
             self.f1.update()
             self.f2.update()
+            self.fx.update()
             if self.ko_timer == 120:
                 if self.f1.round_wins >= 2 or self.f2.round_wins >= 2:
                     self.scene = "victory"
                 else:
                     self.round_num += 1
-                    # preserve cpu flag
                     p2_cpu = self.f2.is_cpu
                     self.reset_round(True)
                     self.f2.is_cpu = p2_cpu
@@ -308,11 +329,8 @@ class SiliconFury:
         self.screen.blit(stage_bg((WIDTH, HEIGHT)), (0, 0))
         # Subtle vignette for fighter readability
         vignette = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        pygame.draw.rect(vignette, (0, 0, 0, 60), (0, 0, WIDTH, HEIGHT))
+        pygame.draw.rect(vignette, (0, 0, 0, 50), (0, 0, WIDTH, HEIGHT))
         self.screen.blit(vignette, (0, 0))
-        # Ground plane cue
-        from silicon_fury.config import GROUND_Y
-
         pygame.draw.line(self.screen, (255, 255, 255, 40), (80, GROUND_Y), (WIDTH - 80, GROUND_Y), 2)
 
     def draw_hud(self) -> None:
@@ -363,9 +381,11 @@ class SiliconFury:
         self.screen.blit(t, (WIDTH // 2 - t.get_width() // 2, 18))
 
         tiny = _font(15)
-        hint = "P1: WASD · J/K punch/kick · L SPECIAL   |   P2: Arrows · N/M · , SPECIAL"
+        hint = "P1: WASD move/jump · Shift dash · J/K punch/kick (air OK) · L SPECIAL"
         if self.f2.is_cpu:
-            hint = "P1: WASD · J/K punch/kick · L SPECIAL   |   CPU"
+            hint = hint + "   |   CPU"
+        else:
+            hint = hint + "   |   P2: Arrows · RShift dash · N/M · , SPECIAL"
         self.screen.blit(tiny.render(hint, True, (200, 210, 230)), (36, HEIGHT - 26))
 
         if self.msg_t > 0 and self.msg:
@@ -379,17 +399,21 @@ class SiliconFury:
     def draw_menu(self) -> None:
         self.draw_arena_bg()
         overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 140))
+        overlay.fill((0, 0, 0, 145))
         self.screen.blit(overlay, (0, 0))
-        title = _font(84).render(TITLE, True, CYAN)
-        sub = _font(32).render("BRAND BRAWL", True, GOLD)
+
+        phase = pygame.time.get_ticks() / 90.0
+        draw_fighter_body(self.screen, CHARACTERS["asus"], 220, 520, 1, "walk", 8, 10, True, 0, phase, scale=1.35)
+        draw_fighter_body(self.screen, CHARACTERS["nvidia"], WIDTH - 220, 520, -1, "walk", 8, 10, True, 0, phase + 1.5, scale=1.35)
+
+        title = _font(88).render(TITLE, True, CYAN)
+        sub = _font(34).render("BRAND BRAWL", True, GOLD)
         tip = _font(24).render("PRESS ENTER — Team Computer vs Team Tech", True, WHITE)
-        self.screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 180))
-        self.screen.blit(sub, (WIDTH // 2 - sub.get_width() // 2, 280))
-        self.screen.blit(tip, (WIDTH // 2 - tip.get_width() // 2, 400))
-        # Team pills
+        self.screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 120))
+        self.screen.blit(sub, (WIDTH // 2 - sub.get_width() // 2, 220))
+        self.screen.blit(tip, (WIDTH // 2 - tip.get_width() // 2, 320))
         for i, (name, col) in enumerate([(TEAM_COMPUTER, CYAN), (TEAM_TECH, GOLD)]):
-            r = pygame.Rect(340 + i * 320, 480, 280, 56)
+            r = pygame.Rect(340 + i * 320, 500, 280, 56)
             pygame.draw.rect(self.screen, PANEL, r, border_radius=12)
             pygame.draw.rect(self.screen, col, r, 2, border_radius=12)
             lab = _font(26).render(name, True, col)
@@ -414,7 +438,7 @@ class SiliconFury:
     def draw_select(self) -> None:
         self.draw_arena_bg()
         dim = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        dim.fill((0, 0, 0, 120))
+        dim.fill((0, 0, 0, 150))
         self.screen.blit(dim, (0, 0))
         roster = by_team(self.team_filter)
         title = _font(40).render(
@@ -422,40 +446,67 @@ class SiliconFury:
             True,
             CYAN if self.team_filter == TEAM_COMPUTER else GOLD,
         )
-        self.screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 20))
+        self.screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 16))
         tip = _font(18).render("←/→ select · TAB switch team · ENTER confirm", True, WHITE)
-        self.screen.blit(tip, (WIDTH // 2 - tip.get_width() // 2, 66))
+        self.screen.blit(tip, (WIDTH // 2 - tip.get_width() // 2, 60))
 
         for i, ch in enumerate(roster):
-            x = 40 + i * 310
-            y = 100
+            x = 36 + i * 312
+            y = 92
             selected = i == self.select_index
-            card = pygame.Rect(x, y, 290, 560)
-            pygame.draw.rect(self.screen, (12, 14, 22), card, border_radius=10)
-            pygame.draw.rect(self.screen, ch.primary if selected else (90, 90, 110), card, 3 if selected else 1, border_radius=10)
-            # Full Tekken-style portrait
-            spr = fighter_sprite(ch.id)
-            portrait = pygame.transform.smoothscale(spr, (200, 320))
-            self.screen.blit(portrait, (x + 45, y + 20))
-            self.screen.blit(_font(34).render(ch.name, True, WHITE), (x + 18, y + 350))
-            self.screen.blit(_font(15).render(ch.tagline[:36], True, (190, 200, 220)), (x + 18, y + 390))
-            self.screen.blit(_font(17).render(ch.special_name, True, ch.accent), (x + 18, y + 415))
+            card = pygame.Rect(x, y, 296, 570)
+            pygame.draw.rect(self.screen, (10, 12, 20), card, border_radius=12)
+            border_col = ch.accent if selected else (70, 78, 96)
+            pygame.draw.rect(self.screen, border_col, card, 3 if selected else 1, border_radius=12)
+
+            phase = pygame.time.get_ticks() / 85.0 + i
+            state = "walk" if selected else "idle"
+            draw_fighter_body(
+                self.screen,
+                ch,
+                x + 148,
+                y + 360,
+                1,
+                state,
+                8 if selected else 0,
+                10 if selected else 0,
+                True,
+                0,
+                phase,
+                scale=1.25 if selected else 1.1,
+            )
+
+            self.screen.blit(_font(32).render(ch.name, True, WHITE), (x + 16, y + 385))
+            self.screen.blit(_font(14).render(ch.tagline[:34], True, (190, 200, 220)), (x + 16, y + 422))
+            self.screen.blit(_font(16).render(ch.special_name, True, ch.accent), (x + 16, y + 446))
             stats = [("HP", ch.hp), ("PWR", ch.power), ("SPD", ch.speed), ("DEF", ch.defense), ("SPC", ch.special)]
             for si, (label, val) in enumerate(stats):
-                sy = y + 445 + si * 20
-                self.screen.blit(_font(13).render(label, True, WHITE), (x + 18, sy))
+                sy = y + 476 + si * 16
+                self.screen.blit(_font(13).render(label, True, WHITE), (x + 16, sy))
                 pygame.draw.rect(self.screen, (40, 40, 55), (x + 55, sy + 3, 200, 10), border_radius=2)
                 pygame.draw.rect(self.screen, ch.primary, (x + 55, sy + 3, int(200 * val / 100), 10), border_radius=2)
 
     def draw_victory(self) -> None:
         self.draw_arena_bg()
         dim = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        dim.fill((0, 0, 0, 110))
+        dim.fill((0, 0, 0, 120))
         self.screen.blit(dim, (0, 0))
         assert self.f1 and self.f2
         winner = self.f1 if self.f1.round_wins >= 2 else self.f2
-        spr = pygame.transform.smoothscale(fighter_sprite(winner.char.id), (260, 420))
-        self.screen.blit(spr, (WIDTH // 2 - 130, 80))
+        draw_fighter_body(
+            self.screen,
+            winner.char,
+            WIDTH // 2,
+            470,
+            1,
+            "special",
+            20,
+            38,
+            True,
+            0,
+            pygame.time.get_ticks() / 80.0,
+            scale=1.5,
+        )
         title = _font(64).render(f"{winner.char.name} WINS", True, GOLD)
         self.screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 520))
         special = _font(26).render(winner.char.special_name, True, winner.char.accent)
@@ -467,14 +518,23 @@ class SiliconFury:
         assert self.f1 and self.f2
         ox = random.randint(-self.shake, self.shake) if self.shake else 0
         oy = random.randint(-self.shake // 2, self.shake // 2) if self.shake else 0
-        # draw to temp for shake
-        self.draw_arena_bg()
-        self.f1.draw(self.screen)
-        self.f2.draw(self.screen)
-        self.draw_hud()
         if ox or oy:
-            # mild shake by blitting offset noise lines already drawn; skip heavy copy
-            pass
+            canvas = pygame.Surface((WIDTH, HEIGHT))
+            old = self.screen
+            self.screen = canvas
+            self.draw_arena_bg()
+            self.fx.draw(self.screen)
+            self.f1.draw(self.screen)
+            self.f2.draw(self.screen)
+            self.draw_hud()
+            self.screen = old
+            self.screen.blit(canvas, (ox, oy))
+        else:
+            self.draw_arena_bg()
+            self.fx.draw(self.screen)
+            self.f1.draw(self.screen)
+            self.f2.draw(self.screen)
+            self.draw_hud()
 
     # ---------- Demo automation for GIFs ----------
     def run_auto_demo(self, name: str) -> None:
@@ -540,23 +600,29 @@ class SiliconFury:
             if abs(self.f2.x - self.f1.x) > 160:
                 self.f1.move(1 if self.f2.x > self.f1.x else -1)
                 self.f2.move(1 if self.f1.x > self.f2.x else -1)
-            if i % 22 == 0:
+            if i % 18 == 0:
                 self.f1.punch()
-            if i % 28 == 8:
+            if i % 24 == 6:
                 self.f1.kick()
-            if i % 26 == 4:
+            if i % 40 == 10:
+                self.f1.jump()
+            if i % 40 == 22 and not self.f1.on_ground:
+                self.f1.kick()
+            if i % 20 == 4:
                 self.f2.punch()
-            if i % 34 == 12:
+            if i % 30 == 12:
                 self.f2.kick()
-            if specials and i in {80, 180, 280}:
+            if i % 45 == 8:
+                self.f2.jump()
+            if specials and i in {70, 160, 250}:
                 self.f1.meter = 100
-                self.f1.special()
+                self.f1.special(self.fx)
                 self.msg = self.f1.char.special_name
                 self.msg_t = 40
                 self.shake = 14
-            if specials and i in {130, 240}:
+            if specials and i in {110, 210}:
                 self.f2.meter = 100
-                self.f2.special()
+                self.f2.special(self.fx)
                 self.msg = self.f2.char.special_name
                 self.msg_t = 40
             self.cpu.difficulty = 0.9
@@ -598,9 +664,13 @@ class SiliconFury:
                 self.f1.punch()
             if i % 50 == 15:
                 self.f1.kick()
+            if i == 120:
+                self.f1.jump()
+            if i == 135:
+                self.f1.kick()
             if i == 200:
                 self.f1.meter = 100
-                self.f1.special()
+                self.f1.special(self.fx)
                 self.msg = self.f1.char.special_name
                 self.msg_t = 50
                 self.shake = 16
@@ -608,7 +678,7 @@ class SiliconFury:
                 self.f2.hp = 30
             if i == 300:
                 self.f1.meter = 100
-                self.f1.special()
+                self.f1.special(self.fx)
             self.update_fight()
             self.draw_fight()
             pygame.display.flip()

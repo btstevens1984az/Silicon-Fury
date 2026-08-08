@@ -2,7 +2,7 @@
 
 **Brand Brawl** — a 2D fighter where PC makers collide with silicon titans.
 
-Built in **Python + pygame**, unique character designs per brand, blood hit FX, and a neon arena stage.
+Built in **Python + pygame**, with **articulated limb combat** (walk, punch, kick, air kick, dash, specials), blood/fire hit FX, and a neon arena stage.
 
 Local vs local, vs CPU, and Story Mode. Every fighter has Tekken-style attributes and a signature special.
 
@@ -33,6 +33,15 @@ Local vs local, vs CPU, and Story Mode. Every fighter has Tekken-style attribute
 ### 5. Story mode K.O.
 
 ![Story mode KO](media/gifs/05-story-ko.gif)
+
+---
+
+## What's new
+
+- **No black boxes** — fighters are drawn with opaque articulated limbs (no sprite rotation artifacts)
+- **Nimble combat** — walk cycles, punches, kicks, air kicks, double-jump, and dash
+- **Brand kits** — each fighter has a unique silhouette, armor style, and hair
+- **Explosive FX** — blood, fire, shockwaves, and screen shake on big hits
 
 ---
 
@@ -73,11 +82,12 @@ Each fighter has **HP · Power · Speed · Defense · Reach · Special** ratings
 | Action | Player 1 | Player 2 |
 |---|---|---|
 | Move | `A` `D` | `←` `→` |
-| Jump | `W` | `↑` |
+| Dash | `Shift` + `A`/`D` | `RShift` + `←`/`→` |
+| Jump (double-jump OK) | `W` | `↑` |
 | Block | `S` | `↓` |
-| Punch | `J` | `N` |
-| Kick | `K` | `M` |
-| **Special** (meter ≥ 60%) | `L` | `,` |
+| Punch (air OK) | `J` | `N` |
+| Kick / air kick | `K` | `M` |
+| **Special** (meter ≥ 55%) | `L` | `,` |
 
 Menu: `Enter` confirm · `Esc` back · `Tab` switch team on select screen.
 
@@ -87,7 +97,8 @@ Menu: `Enter` confirm · `Esc` back · `Tab` switch team on select screen.
 
 ### Requirements
 - Python **3.10+**
-- `pygame 2.6+`
+- `pygame-ce` (or `pygame`) **2.5+**
+- `Pillow`
 
 ### Linux / macOS
 
@@ -117,6 +128,8 @@ python main.py
 ./scripts/make_gifs.sh
 ```
 
+Requires `ffmpeg`.
+
 ---
 
 ## Project layout
@@ -126,7 +139,9 @@ Silicon-Fury/
 ├── main.py                 # Entry point
 ├── silicon_fury/
 │   ├── characters.py       # Roster + attributes + specials
-│   ├── fighter.py          # Movement, combat, rendering
+│   ├── body.py             # Articulated fighter rendering
+│   ├── fighter.py          # Movement, combat
+│   ├── effects.py          # Blood / fire / explosions
 │   ├── ai.py               # CPU brain
 │   ├── game.py             # Menus, modes, fight loop, demos
 │   └── config.py
