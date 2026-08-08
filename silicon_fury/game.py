@@ -399,17 +399,21 @@ class SiliconFury:
     def draw_menu(self) -> None:
         self.draw_arena_bg()
         overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 140))
+        overlay.fill((0, 0, 0, 145))
         self.screen.blit(overlay, (0, 0))
-        title = _font(84).render(TITLE, True, CYAN)
-        sub = _font(32).render("BRAND BRAWL", True, GOLD)
+
+        phase = pygame.time.get_ticks() / 90.0
+        draw_fighter_body(self.screen, CHARACTERS["asus"], 220, 520, 1, "walk", 8, 10, True, 0, phase, scale=1.35)
+        draw_fighter_body(self.screen, CHARACTERS["nvidia"], WIDTH - 220, 520, -1, "walk", 8, 10, True, 0, phase + 1.5, scale=1.35)
+
+        title = _font(88).render(TITLE, True, CYAN)
+        sub = _font(34).render("BRAND BRAWL", True, GOLD)
         tip = _font(24).render("PRESS ENTER — Team Computer vs Team Tech", True, WHITE)
-        self.screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 180))
-        self.screen.blit(sub, (WIDTH // 2 - sub.get_width() // 2, 280))
-        self.screen.blit(tip, (WIDTH // 2 - tip.get_width() // 2, 400))
-        # Team pills
+        self.screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 120))
+        self.screen.blit(sub, (WIDTH // 2 - sub.get_width() // 2, 220))
+        self.screen.blit(tip, (WIDTH // 2 - tip.get_width() // 2, 320))
         for i, (name, col) in enumerate([(TEAM_COMPUTER, CYAN), (TEAM_TECH, GOLD)]):
-            r = pygame.Rect(340 + i * 320, 480, 280, 56)
+            r = pygame.Rect(340 + i * 320, 500, 280, 56)
             pygame.draw.rect(self.screen, PANEL, r, border_radius=12)
             pygame.draw.rect(self.screen, col, r, 2, border_radius=12)
             lab = _font(26).render(name, True, col)
@@ -434,7 +438,7 @@ class SiliconFury:
     def draw_select(self) -> None:
         self.draw_arena_bg()
         dim = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        dim.fill((0, 0, 0, 120))
+        dim.fill((0, 0, 0, 150))
         self.screen.blit(dim, (0, 0))
         roster = by_team(self.team_filter)
         title = _font(40).render(
@@ -442,47 +446,50 @@ class SiliconFury:
             True,
             CYAN if self.team_filter == TEAM_COMPUTER else GOLD,
         )
-        self.screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 20))
+        self.screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 16))
         tip = _font(18).render("←/→ select · TAB switch team · ENTER confirm", True, WHITE)
-        self.screen.blit(tip, (WIDTH // 2 - tip.get_width() // 2, 66))
+        self.screen.blit(tip, (WIDTH // 2 - tip.get_width() // 2, 60))
 
         for i, ch in enumerate(roster):
-            x = 40 + i * 310
-            y = 100
+            x = 36 + i * 312
+            y = 92
             selected = i == self.select_index
-            card = pygame.Rect(x, y, 290, 560)
-            pygame.draw.rect(self.screen, (12, 14, 22), card, border_radius=10)
-            pygame.draw.rect(self.screen, ch.primary if selected else (90, 90, 110), card, 3 if selected else 1, border_radius=10)
-            # Live articulated preview (solid limbs)
-            feet_x, feet_y = x + 145, y + 330
-            phase = pygame.time.get_ticks() / 90.0 + i
+            card = pygame.Rect(x, y, 296, 570)
+            pygame.draw.rect(self.screen, (10, 12, 20), card, border_radius=12)
+            border_col = ch.accent if selected else (70, 78, 96)
+            pygame.draw.rect(self.screen, border_col, card, 3 if selected else 1, border_radius=12)
+
+            phase = pygame.time.get_ticks() / 85.0 + i
+            state = "walk" if selected else "idle"
             draw_fighter_body(
                 self.screen,
                 ch,
-                feet_x,
-                feet_y,
+                x + 148,
+                y + 360,
                 1,
-                "walk" if selected else "idle",
+                state,
                 8 if selected else 0,
                 10 if selected else 0,
                 True,
                 0,
                 phase,
+                scale=1.25 if selected else 1.1,
             )
-            self.screen.blit(_font(34).render(ch.name, True, WHITE), (x + 18, y + 350))
-            self.screen.blit(_font(15).render(ch.tagline[:36], True, (190, 200, 220)), (x + 18, y + 390))
-            self.screen.blit(_font(17).render(ch.special_name, True, ch.accent), (x + 18, y + 415))
+
+            self.screen.blit(_font(32).render(ch.name, True, WHITE), (x + 16, y + 385))
+            self.screen.blit(_font(14).render(ch.tagline[:34], True, (190, 200, 220)), (x + 16, y + 422))
+            self.screen.blit(_font(16).render(ch.special_name, True, ch.accent), (x + 16, y + 446))
             stats = [("HP", ch.hp), ("PWR", ch.power), ("SPD", ch.speed), ("DEF", ch.defense), ("SPC", ch.special)]
             for si, (label, val) in enumerate(stats):
-                sy = y + 445 + si * 20
-                self.screen.blit(_font(13).render(label, True, WHITE), (x + 18, sy))
+                sy = y + 476 + si * 16
+                self.screen.blit(_font(13).render(label, True, WHITE), (x + 16, sy))
                 pygame.draw.rect(self.screen, (40, 40, 55), (x + 55, sy + 3, 200, 10), border_radius=2)
                 pygame.draw.rect(self.screen, ch.primary, (x + 55, sy + 3, int(200 * val / 100), 10), border_radius=2)
 
     def draw_victory(self) -> None:
         self.draw_arena_bg()
         dim = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        dim.fill((0, 0, 0, 110))
+        dim.fill((0, 0, 0, 120))
         self.screen.blit(dim, (0, 0))
         assert self.f1 and self.f2
         winner = self.f1 if self.f1.round_wins >= 2 else self.f2
@@ -490,7 +497,7 @@ class SiliconFury:
             self.screen,
             winner.char,
             WIDTH // 2,
-            480,
+            470,
             1,
             "special",
             20,
@@ -498,6 +505,7 @@ class SiliconFury:
             True,
             0,
             pygame.time.get_ticks() / 80.0,
+            scale=1.5,
         )
         title = _font(64).render(f"{winner.char.name} WINS", True, GOLD)
         self.screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 520))

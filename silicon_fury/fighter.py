@@ -289,21 +289,14 @@ class Fighter:
         for s in self.sparks:
             pygame.draw.circle(surf, s["color"], (int(s["x"]), int(s["y"])), 3)
 
-        # Contact shadow
-        shadow_w = 150 if self.on_ground else 100
-        shadow = pygame.Surface((shadow_w, 30), pygame.SRCALPHA)
-        alpha = 140 if self.on_ground else 70
-        pygame.draw.ellipse(shadow, (0, 0, 0, alpha), (0, 0, shadow_w, 30))
-        surf.blit(shadow, (self.x - shadow_w / 2, GROUND_Y - 10))
-
-        # Special aura
+        # Special aura — ring only (no filled blob that reads as a dark box)
         if self.state == "special":
             pulse = self.state_max - self.state_t
-            radius = 60 + pulse * 4
+            radius = 70 + pulse * 4
             aura = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
-            pygame.draw.circle(aura, (*self.char.accent, 55), (radius, radius), radius, 5)
-            pygame.draw.circle(aura, (*self.char.primary, 40), (radius, radius), int(radius * 0.65))
-            surf.blit(aura, (self.x - radius, self.y - 120 - radius // 2))
+            pygame.draw.circle(aura, (*self.char.accent, 110), (radius, radius), radius, 6)
+            pygame.draw.circle(aura, (*self.char.primary, 70), (radius, radius), int(radius * 0.72), 3)
+            surf.blit(aura, (self.x - radius, self.y - 130 - radius // 2))
 
         draw_fighter_body(
             surf,
@@ -324,6 +317,6 @@ class Fighter:
             label = font.render(self.char.special_name, True, self.char.accent)
             outline = font.render(self.char.special_name, True, (0, 0, 0))
             lx = self.x - label.get_width() / 2
-            ly = self.y - 260
+            ly = self.y - 290
             surf.blit(outline, (lx + 2, ly + 2))
             surf.blit(label, (lx, ly))
