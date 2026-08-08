@@ -2,7 +2,7 @@
 
 **Brand Brawl** — a 2D fighter where PC makers collide with silicon titans.
 
-Built in **Python + pygame** with **Tekken-inspired 3D fighter renders**, unique character designs per brand, blood hit FX, and a neon arena stage.
+Built in **Python + pygame**, unique character designs per brand, blood hit FX, and a neon arena stage.
 
 Local vs local, vs CPU, and Story Mode. Every fighter has Tekken-style attributes and a signature special.
 
