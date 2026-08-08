@@ -1,4 +1,4 @@
-"""Fighter entity — movement, attacks, specials, rendering."""
+"""Fighter entity — Tekken-style sprite combat with blood FX."""
 
 from __future__ import annotations
 
@@ -8,8 +8,24 @@ from typing import List, Optional, Tuple
 
 import pygame
 
+from silicon_fury.assets import fighter_sprite, tint_surface
 from silicon_fury.characters import Character
-from silicon_fury.config import GROUND_Y, GRAVITY, WIDTH
+from silicon_fury.config import GRAVITY, GROUND_Y, WIDTH
+
+
+class BloodDrop:
+    __slots__ = ("x", "y", "vx", "vy", "life", "r", "dark")
+
+    def __init__(self, x: float, y: float):
+        ang = random.uniform(-2.4, -0.7)
+        spd = random.uniform(3.5, 11)
+        self.x = x
+        self.y = y
+        self.vx = math.cos(ang) * spd * random.choice([-1, 1])
+        self.vy = math.sin(ang) * spd - random.uniform(2, 6)
+        self.life = random.randint(18, 40)
+        self.r = random.randint(2, 5)
+        self.dark = random.random() < 0.35
 
 
 class Fighter:
@@ -35,15 +51,17 @@ class Fighter:
         self.combo = 0
         self.round_wins = 0
         self.flash = 0
-        self.particles: List[dict] = []
+        self.blood: List[BloodDrop] = []
+        self.sparks: List[dict] = []
+        self.base_sprite = fighter_sprite(char.id)
 
-        self.move_speed = 3.2 + char.speed * 0.035
-        self.jump_power = 14.5 + char.speed * 0.02
-        self.punch_dmg = 28 + char.power * 0.22
-        self.kick_dmg = 38 + char.power * 0.28
-        self.special_dmg = 95 + char.special * 0.55
+        self.move_speed = 3.4 + char.speed * 0.038
+        self.jump_power = 15.0 + char.speed * 0.02
+        self.punch_dmg = 32 + char.power * 0.24
+        self.kick_dmg = 44 + char.power * 0.3
+        self.special_dmg = 110 + char.special * 0.6
         self.defense_factor = 1.0 - (char.defense / 220.0)
-        self.reach_px = 58 + char.reach * 0.5
+        self.reach_px = 70 + char.reach * 0.55
 
     def set_state(self, state: str, frames: int = 12) -> None:
         self.state = state
@@ -66,54 +84,85 @@ class Fighter:
         if self.can_act() and self.on_ground:
             self.vy = -self.jump_power
             self.on_ground = False
-            self.set_state("jump", 20)
+            self.set_state("jump", 22)
 
     def block(self, holding: bool) -> None:
         if self.hp <= 0 or self.hitstun > 0:
             return
         if holding and self.on_ground and self.state not in {"punch", "kick", "special"}:
             self.set_state("block", 4)
-            self.vx *= 0.3
+            self.vx *= 0.25
 
     def punch(self) -> None:
         if self.can_act() and self.state not in {"punch", "kick"}:
             self.set_state("punch", 16)
-            self.vx = self.facing * 1.5
+            self.vx = self.facing * 2.2
 
     def kick(self) -> None:
         if self.can_act() and self.state not in {"punch", "kick"}:
             self.set_state("kick", 20)
-            self.vx = self.facing * 2.0
+            self.vx = self.facing * 2.8
 
     def special(self) -> bool:
         if self.meter < 60 or not self.can_act():
             return False
         self.meter -= 60
-        self.set_state("special", 40)
-        self.vx = self.facing * (3.0 + self.char.speed * 0.02)
-        self._burst(self.char.accent, 18)
+        self.set_state("special", 42)
+        self.vx = self.facing * (3.4 + self.char.speed * 0.02)
+        for _ in range(10):
+            self.sparks.append(
+                {
+                    "x": self.x,
+                    "y": self.y - 120,
+                    "vx": self.facing * random.uniform(2, 8),
+                    "vy": random.uniform(-4, 2),
+                    "life": random.randint(12, 24),
+                    "color": self.char.accent,
+                }
+            )
         return True
 
+    def _spawn_blood(self, amount: int, facing: int) -> None:
+        for _ in range(amount):
+            d = BloodDrop(self.x + facing * 20, self.y - random.uniform(70, 140))
+            d.vx = abs(d.vx) * facing + random.uniform(-1, 1)
+            self.blood.append(d)
+
     def take_hit(self, dmg: float, knock: float, attacker_facing: int) -> None:
-        if self.state == "block":
-            dmg *= 0.35
-            knock *= 0.25
-            self.meter = min(self.max_meter, self.meter + 4)
+        blocked = self.state == "block"
+        if blocked:
+            dmg *= 0.32
+            knock *= 0.2
+            self.meter = min(self.max_meter, self.meter + 5)
+            # sparks instead of heavy blood when blocked
+            for _ in range(6):
+                self.sparks.append(
+                    {
+                        "x": self.x - attacker_facing * 10,
+                        "y": self.y - 100,
+                        "vx": random.uniform(-4, 4),
+                        "vy": random.uniform(-3, 1),
+                        "life": 12,
+                        "color": (255, 220, 120),
+                    }
+                )
         else:
-            self.hitstun = 14
-            self.set_state("hit", 14)
-            self.flash = 8
+            self.hitstun = 16
+            self.set_state("hit", 16)
+            self.flash = 10
             self.combo = 0
+            blood_n = 10 + int(min(28, dmg / 6))
+            self._spawn_blood(blood_n, attacker_facing)
         dmg *= self.defense_factor
         self.hp = max(0, self.hp - dmg)
         self.vx = attacker_facing * knock
-        self.vy = -3.5 if self.state != "block" else -1.0
+        self.vy = -4.2 if not blocked else -1.2
         self.on_ground = False
-        self._burst(self.char.accent, 12)
         if self.hp <= 0:
             self.hp = 0
-            self.set_state("ko", 120)
-            self.hitstun = 120
+            self.set_state("ko", 140)
+            self.hitstun = 140
+            self._spawn_blood(40, attacker_facing)
 
     def gain_meter(self, amount: float) -> None:
         self.meter = min(self.max_meter, self.meter + amount)
@@ -125,19 +174,19 @@ class Fighter:
                 x -= w
             return pygame.Rect(x, int(y), w, h)
 
-        elapsed_punch = 16 - self.state_t
-        elapsed_kick = 20 - self.state_t
-        elapsed_special = 40 - min(self.state_t, 40)
-        if self.state == "punch" and 4 <= elapsed_punch <= 10:
-            return box(36, self.y - 100, int(self.reach_px), 40)
-        if self.state == "kick" and 6 <= elapsed_kick <= 14:
-            return box(28, self.y - 70, int(self.reach_px + 22), 44)
-        if self.state == "special" and 8 <= elapsed_special <= 32:
-            return box(16, self.y - 130, int(self.reach_px + 70 + self.char.special * 0.35), 90)
+        ep = 16 - self.state_t
+        ek = 20 - self.state_t
+        es = 42 - min(self.state_t, 42)
+        if self.state == "punch" and 4 <= ep <= 11:
+            return box(40, self.y - 130, int(self.reach_px), 48)
+        if self.state == "kick" and 6 <= ek <= 15:
+            return box(36, self.y - 90, int(self.reach_px + 28), 52)
+        if self.state == "special" and 8 <= es <= 34:
+            return box(20, self.y - 160, int(self.reach_px + 90 + self.char.special * 0.4), 110)
         return None
 
     def body_box(self) -> pygame.Rect:
-        return pygame.Rect(int(self.x - 34), int(self.y - 150), 68, 150)
+        return pygame.Rect(int(self.x - 40), int(self.y - 200), 80, 200)
 
     def update(self) -> None:
         if self.hitstun > 0:
@@ -152,7 +201,7 @@ class Fighter:
         self.vy += GRAVITY
         self.x += self.vx
         self.y += self.vy
-        self.vx *= 0.85
+        self.vx *= 0.86
 
         if self.y >= GROUND_Y:
             self.y = GROUND_Y
@@ -161,153 +210,125 @@ class Fighter:
         else:
             self.on_ground = False
 
-        self.x = max(70, min(WIDTH - 70, self.x))
+        self.x = max(90, min(WIDTH - 90, self.x))
         if self.state == "idle":
-            self.gain_meter(0.08)
+            self.gain_meter(0.09)
 
-        for p in self.particles:
-            p["x"] += p["vx"]
-            p["y"] += p["vy"]
-            p["life"] -= 1
-        self.particles = [p for p in self.particles if p["life"] > 0]
+        for b in self.blood:
+            b.vy += 0.55
+            b.x += b.vx
+            b.y += b.vy
+            b.life -= 1
+            if b.y > GROUND_Y - 4:
+                b.y = GROUND_Y - 4
+                b.vx *= 0.4
+                b.vy = 0
+        self.blood = [b for b in self.blood if b.life > 0]
 
-    def _burst(self, color: Tuple[int, int, int], n: int = 8) -> None:
-        for _ in range(n):
-            ang = random.uniform(0, math.tau)
-            spd = random.uniform(2.0, 6.5)
-            self.particles.append(
-                {
-                    "x": self.x,
-                    "y": self.y - 90,
-                    "vx": math.cos(ang) * spd,
-                    "vy": math.sin(ang) * spd - 1,
-                    "life": random.randint(12, 26),
-                    "color": color,
-                    "r": random.randint(2, 5),
-                }
-            )
+        for s in self.sparks:
+            s["x"] += s["vx"]
+            s["y"] += s["vy"]
+            s["life"] -= 1
+        self.sparks = [s for s in self.sparks if s["life"] > 0]
+
+    def _posed_sprite(self) -> pygame.Surface:
+        spr = self.base_sprite
+        # Pose transforms to sell attacks (Tekken-like motion readability)
+        angle = 0
+        scale_x, scale_y = 1.0, 1.0
+        if self.state == "punch":
+            angle = -12 * self.facing
+            scale_x = 1.08
+        elif self.state == "kick":
+            angle = 16 * self.facing
+            scale_x = 1.1
+            scale_y = 0.96
+        elif self.state == "special":
+            pulse = 1.0 + (42 - min(self.state_t, 42)) * 0.004
+            scale_x = scale_y = pulse
+            angle = -6 * self.facing
+        elif self.state == "block":
+            scale_y = 0.94
+            angle = 4 * self.facing
+        elif self.state == "hit":
+            angle = 18 * (-self.facing)
+            scale_x = 0.95
+        elif self.state == "ko":
+            angle = 80 * (-self.facing)
+            scale_y = 0.7
+        elif self.state == "walk":
+            bob = math.sin(pygame.time.get_ticks() / 70.0) * 2
+            angle = bob * self.facing
+        elif self.state == "jump":
+            angle = -8 * self.facing
+
+        w, h = spr.get_width(), spr.get_height()
+        spr = pygame.transform.smoothscale(spr, (max(1, int(w * scale_x)), max(1, int(h * scale_y))))
+        if self.facing < 0:
+            spr = pygame.transform.flip(spr, True, False)
+        if abs(angle) > 0.1:
+            spr = pygame.transform.rotate(spr, angle)
+        if self.flash > 0:
+            spr = tint_surface(spr, (255, 80, 80), 0.55)
+        elif self.state == "special":
+            spr = tint_surface(spr, self.char.accent, 0.25)
+        return spr
 
     def draw(self, surf: pygame.Surface) -> None:
-        for p in self.particles:
-            pygame.draw.circle(surf, p["color"], (int(p["x"]), int(p["y"])), p.get("r", 3))
+        # Blood first (under/around character)
+        for b in self.blood:
+            col = (90, 0, 0) if b.dark else (170, 10, 20)
+            pygame.draw.circle(surf, col, (int(b.x), int(b.y)), b.r)
+            if b.y >= GROUND_Y - 6:
+                pygame.draw.ellipse(surf, (110, 0, 10), (int(b.x - b.r), int(GROUND_Y - 5), b.r * 3, 6))
 
-        # Soft shadow
-        shadow = pygame.Surface((120, 28), pygame.SRCALPHA)
-        pygame.draw.ellipse(shadow, (0, 0, 0, 110), (0, 0, 120, 28))
-        surf.blit(shadow, (self.x - 60, GROUND_Y - 10))
+        for s in self.sparks:
+            pygame.draw.circle(surf, s["color"], (int(s["x"]), int(s["y"])), 3)
 
-        c = self.char
-        flash = self.flash > 0
-        skin = (255, 224, 196) if not flash else (255, 255, 255)
-        primary = (255, 255, 255) if flash else c.primary
-        secondary = c.secondary
-        accent = c.accent
-        f = self.facing
+        # Contact shadow
+        shadow = pygame.Surface((160, 36), pygame.SRCALPHA)
+        pygame.draw.ellipse(shadow, (0, 0, 0, 130), (0, 0, 160, 36))
+        surf.blit(shadow, (self.x - 80, GROUND_Y - 12))
 
-        bob = math.sin(pygame.time.get_ticks() / 160.0 + self.x * 0.01) * (3 if self.state == "idle" else 0)
-        lean = 0
-        arm_l = arm_r = 0
-        leg_l = leg_r = 0
-        crouch = 0
+        spr = self._posed_sprite()
+        rect = spr.get_rect()
+        if self.state == "ko":
+            rect.midbottom = (int(self.x), int(self.y - 10))
+        else:
+            # Bob idle
+            bob = math.sin(pygame.time.get_ticks() / 180.0 + self.x * 0.01) * (3 if self.state == "idle" else 0)
+            lunge = 0
+            if self.state == "punch":
+                lunge = self.facing * 28
+            elif self.state == "kick":
+                lunge = self.facing * 36
+            elif self.state == "special":
+                lunge = self.facing * 48
+            elif self.state == "hit":
+                lunge = -self.facing * 22
+            rect.midbottom = (int(self.x + lunge), int(self.y + bob))
 
-        if self.state == "walk":
-            phase = math.sin(pygame.time.get_ticks() / 70.0)
-            leg_l, leg_r = phase * 14, -phase * 14
-        elif self.state == "punch":
-            arm_r = f * 46
-            lean = f * 12
-        elif self.state == "kick":
-            leg_r = f * 52
-            lean = f * 10
-            arm_l = -f * 16
-        elif self.state == "special":
-            arm_r = f * 58
-            lean = f * 16
-            # Expanding energy ring
-            pulse = 40 - min(self.state_t, 40)
-            radius = 55 + pulse * 3
-            aura = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
-            pygame.draw.circle(aura, (*accent, 40), (radius, radius), radius)
-            pygame.draw.circle(aura, (*primary, 70), (radius, radius), int(radius * 0.55), 4)
-            surf.blit(aura, (self.x - radius, self.y - 100 - radius // 2))
-            # Beam / shockwave
-            beam = pygame.Surface((160, 36), pygame.SRCALPHA)
-            pygame.draw.ellipse(beam, (*accent, 120), (0, 0, 160, 36))
-            bx = self.x + (20 if f > 0 else -180)
-            surf.blit(beam, (bx, self.y - 95))
-        elif self.state == "block":
-            arm_l = arm_r = -f * 8
-            lean = -f * 6
-            crouch = 8
-        elif self.state == "hit":
-            lean = -f * 18
-        elif self.state == "ko":
-            body = pygame.Rect(self.x - 70, self.y - 40, 140, 36)
-            pygame.draw.ellipse(surf, secondary, body)
-            pygame.draw.ellipse(surf, primary, (self.x - 70, self.y - 40, 140, 36), 3)
-            hx = self.x - f * 50
-            pygame.draw.circle(surf, primary, (int(hx), int(self.y - 48)), 22)
-            pygame.draw.circle(surf, skin, (int(hx), int(self.y - 48)), 17)
-            pygame.draw.rect(surf, accent, (hx - 12, self.y - 54, 24, 8), border_radius=3)
-            return
-        elif self.state == "jump":
-            leg_l, leg_r = -8, 8
-
-        cx = self.x + lean
-        cy = self.y - 78 + bob + crouch
-
-        # Legs (thigh + shin)
-        hip_l = (cx - 12, cy + 28)
-        hip_r = (cx + 12, cy + 28)
-        foot_l = (cx - 18 + leg_l, cy + 78)
-        foot_r = (cx + 18 + leg_r, cy + 78)
-        pygame.draw.line(surf, secondary, hip_l, foot_l, 14)
-        pygame.draw.line(surf, secondary, hip_r, foot_r, 14)
-        pygame.draw.circle(surf, primary, (int(foot_l[0]), int(foot_l[1])), 9)
-        pygame.draw.circle(surf, primary, (int(foot_r[0]), int(foot_r[1])), 9)
-
-        # Torso armor
-        torso = pygame.Rect(cx - 28, cy - 36, 56, 70)
-        pygame.draw.rect(surf, primary, torso, border_radius=14)
-        pygame.draw.rect(surf, secondary, (cx - 22, cy - 28, 44, 54), border_radius=10)
-        # Brand chest plate
-        pygame.draw.polygon(
-            surf,
-            accent,
-            [(cx, cy - 18), (cx + f * 18, cy + 4), (cx, cy + 16), (cx - f * 10, cy + 4)],
-        )
-        pygame.draw.rect(surf, accent, (cx - 20, cy + 22, 40, 6), border_radius=2)
-
-        # Shoulders / arms
-        shoulder_l = (cx - 28, cy - 22)
-        shoulder_r = (cx + 28, cy - 22)
-        hand_l = (cx - 48 - arm_l * 0.15, cy + 8 + abs(arm_l) * 0.05)
-        hand_r = (cx + 48 + arm_r, cy + 2)
-        pygame.draw.line(surf, skin, shoulder_l, hand_l, 11)
-        pygame.draw.line(surf, skin, shoulder_r, hand_r, 12)
-        pygame.draw.circle(surf, secondary, (int(shoulder_l[0]), int(shoulder_l[1])), 11)
-        pygame.draw.circle(surf, secondary, (int(shoulder_r[0]), int(shoulder_r[1])), 11)
-        pygame.draw.circle(surf, accent, (int(hand_l[0]), int(hand_l[1])), 10)
-        glove_r = 14 if self.state in {"punch", "special"} else 11
-        pygame.draw.circle(surf, accent, (int(hand_r[0]), int(hand_r[1])), glove_r)
-        if self.state in {"punch", "special"}:
-            pygame.draw.circle(surf, (255, 255, 255), (int(hand_r[0]), int(hand_r[1])), glove_r, 2)
-
-        # Head + helm
-        pygame.draw.circle(surf, skin, (int(cx), int(cy - 58)), 20)
-        pygame.draw.rect(surf, secondary, (cx - 18, cy - 70, 36, 18), border_radius=6)
-        pygame.draw.rect(surf, primary, (cx - 16, cy - 68, 32, 12), border_radius=4)
-        pygame.draw.rect(surf, accent, (cx - 12, cy - 65, 24, 7), border_radius=3)
-        # Eye glow toward facing side
-        pygame.draw.circle(surf, accent, (int(cx + f * 7), int(cy - 58)), 4)
-        pygame.draw.circle(surf, (255, 255, 255), (int(cx + f * 7), int(cy - 58)), 2)
-
-        # Special callout
+        # Special aura ring
         if self.state == "special":
-            font = pygame.font.SysFont("Impact", 26)
-            label = font.render(self.char.special_name, True, accent)
+            pulse = 42 - min(self.state_t, 42)
+            radius = 70 + pulse * 3
+            aura = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
+            pygame.draw.circle(aura, (*self.char.accent, 50), (radius, radius), radius, 6)
+            pygame.draw.circle(aura, (*self.char.primary, 35), (radius, radius), int(radius * 0.7))
+            surf.blit(aura, (rect.centerx - radius, rect.centery - radius))
+            # Energy slash
+            slash = pygame.Surface((220, 50), pygame.SRCALPHA)
+            pygame.draw.ellipse(slash, (*self.char.accent, 140), (0, 0, 220, 50))
+            sx = rect.centerx if self.facing > 0 else rect.centerx - 220
+            surf.blit(slash, (sx, rect.centery - 20))
+
+        surf.blit(spr, rect)
+
+        if self.state == "special":
+            font = pygame.font.SysFont("Impact", 30)
+            label = font.render(self.char.special_name, True, self.char.accent)
             outline = font.render(self.char.special_name, True, (0, 0, 0))
             lx = self.x - label.get_width() / 2
-            ly = self.y - 200
+            ly = self.y - 250
             surf.blit(outline, (lx + 2, ly + 2))
             surf.blit(label, (lx, ly))

@@ -13,3 +13,4 @@ media/frames/
 *.egg-info/
 dist/
 build/
+media/frames/

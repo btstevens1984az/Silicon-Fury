@@ -26,6 +26,7 @@ from silicon_fury.config import (
     WHITE,
     WIDTH,
 )
+from silicon_fury.assets import fighter_sprite, stage_bg
 from silicon_fury.fighter import Fighter
 
 
@@ -303,69 +304,77 @@ class SiliconFury:
 
     # ---------- Draw ----------
     def draw_arena_bg(self) -> None:
-        # Gradient night arena
-        for y in range(HEIGHT):
-            t = y / HEIGHT
-            col = (
-                int(10 + 20 * t),
-                int(12 + 30 * t),
-                int(28 + 50 * t),
-            )
-            pygame.draw.line(self.screen, col, (0, y), (WIDTH, y))
-        for x, y, r in self.bg_stars:
-            pygame.draw.circle(self.screen, (180, 200, 255), (x, y), r)
-        # City / server rack silhouettes
+        # Photoreal Tekken-style stage
+        self.screen.blit(stage_bg((WIDTH, HEIGHT)), (0, 0))
+        # Subtle vignette for fighter readability
+        vignette = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        pygame.draw.rect(vignette, (0, 0, 0, 60), (0, 0, WIDTH, HEIGHT))
+        self.screen.blit(vignette, (0, 0))
+        # Ground plane cue
         from silicon_fury.config import GROUND_Y
 
-        for i, h in enumerate([80, 120, 90, 150, 70, 130, 100, 160, 85]):
-            x = 40 + i * 140
-            pygame.draw.rect(self.screen, (18, 24, 48), (x, GROUND_Y - h, 90, h))
-            for ly in range(8, h, 16):
-                pygame.draw.rect(self.screen, (40, 80, 120), (x + 10, GROUND_Y - h + ly, 12, 6))
-                pygame.draw.rect(self.screen, (40, 80, 120), (x + 40, GROUND_Y - h + ly, 12, 6))
-        # Floor
-        pygame.draw.rect(self.screen, (30, 35, 55), (0, GROUND_Y, WIDTH, HEIGHT - GROUND_Y))
-        pygame.draw.line(self.screen, CYAN, (0, GROUND_Y), (WIDTH, GROUND_Y), 2)
-        # Neon ring
-        pygame.draw.ellipse(self.screen, (40, 60, 100), (180, 560, WIDTH - 360, 50), 2)
+        pygame.draw.line(self.screen, (255, 255, 255, 40), (80, GROUND_Y), (WIDTH - 80, GROUND_Y), 2)
 
     def draw_hud(self) -> None:
         assert self.f1 and self.f2
-        # HP bars
-        def bar(x, y, w, h, frac, col, name, wins, meter_frac, special):
-            pygame.draw.rect(self.screen, PANEL, (x - 4, y - 4, w + 8, h + 40), border_radius=8)
-            pygame.draw.rect(self.screen, (40, 40, 50), (x, y, w, h), border_radius=6)
-            pygame.draw.rect(self.screen, col, (x, y, int(w * max(0, frac)), h), border_radius=6)
+
+        def tekken_bar(x, y, w, h, frac, fill, name, wins, meter_frac, mirror=False):
+            # Outer chrome frame
+            frame = pygame.Rect(x - 6, y - 8, w + 12, h + 52)
+            pygame.draw.rect(self.screen, (20, 20, 28), frame, border_radius=4)
+            pygame.draw.rect(self.screen, (220, 200, 120), frame, 2, border_radius=4)
+            # HP track
+            pygame.draw.rect(self.screen, (40, 10, 10), (x, y, w, h))
+            fw = int(w * max(0.0, min(1.0, frac)))
+            if mirror:
+                pygame.draw.rect(self.screen, fill, (x + w - fw, y, fw, h))
+            else:
+                pygame.draw.rect(self.screen, fill, (x, y, fw, h))
+            # Gloss
+            gloss = pygame.Surface((w, h // 2), pygame.SRCALPHA)
+            gloss.fill((255, 255, 255, 35))
+            self.screen.blit(gloss, (x, y))
+            # Name + wins
             font = _font(22)
-            self.screen.blit(font.render(name, True, WHITE), (x, y + h + 4))
-            # Wins
+            label = font.render(name, True, WHITE)
+            self.screen.blit(label, (x if not mirror else x + w - label.get_width(), y + h + 4))
             for i in range(2):
-                c = GOLD if i < wins else (60, 60, 70)
-                pygame.draw.circle(self.screen, c, (x + w - 20 - i * 22, y + h + 16), 7)
-            # Meter
-            pygame.draw.rect(self.screen, (30, 30, 40), (x, y + h + 28, w, 8), border_radius=3)
-            mcol = CYAN if meter_frac >= 0.6 else (80, 120, 160)
-            pygame.draw.rect(self.screen, mcol, (x, y + h + 28, int(w * meter_frac), 8), border_radius=3)
+                c = (255, 210, 70) if i < wins else (55, 55, 65)
+                cx = (x + w - 14 - i * 20) if not mirror else (x + 14 + i * 20)
+                pygame.draw.circle(self.screen, c, (cx, y + h + 16), 6)
+                pygame.draw.circle(self.screen, (30, 30, 30), (cx, y + h + 16), 6, 1)
+            # Rage / special meter
+            pygame.draw.rect(self.screen, (25, 25, 35), (x, y + h + 28, w, 10))
+            mw = int(w * meter_frac)
+            mcol = (80, 200, 255) if meter_frac >= 0.6 else (70, 90, 140)
+            if mirror:
+                pygame.draw.rect(self.screen, mcol, (x + w - mw, y + h + 28, mw, 10))
+            else:
+                pygame.draw.rect(self.screen, mcol, (x, y + h + 28, mw, 10))
 
-        bar(40, 28, 420, 22, self.f1.hp / self.f1.max_hp, RED, self.f1.char.name, self.f1.round_wins, self.f1.meter / 100, self.f1.char.special_name)
-        bar(WIDTH - 460, 28, 420, 22, self.f2.hp / self.f2.max_hp, GREEN, self.f2.char.name, self.f2.round_wins, self.f2.meter / 100, self.f2.char.special_name)
+        tekken_bar(36, 24, 460, 26, self.f1.hp / self.f1.max_hp, (210, 40, 55), self.f1.char.name, self.f1.round_wins, self.f1.meter / 100)
+        tekken_bar(WIDTH - 496, 24, 460, 26, self.f2.hp / self.f2.max_hp, (40, 180, 90), self.f2.char.name, self.f2.round_wins, self.f2.meter / 100, mirror=True)
 
-        # Timer
-        font = _font(48)
-        t = font.render(str(int(self.round_time)), True, GOLD)
-        self.screen.blit(t, (WIDTH // 2 - t.get_width() // 2, 20))
+        # Center timer diamond
+        font = _font(54)
+        t = font.render(f"{int(self.round_time):02d}", True, (255, 230, 120))
+        pygame.draw.rect(self.screen, (15, 15, 22), (WIDTH // 2 - 48, 16, 96, 58), border_radius=6)
+        pygame.draw.rect(self.screen, (230, 200, 100), (WIDTH // 2 - 48, 16, 96, 58), 2, border_radius=6)
+        self.screen.blit(t, (WIDTH // 2 - t.get_width() // 2, 18))
 
-        # Controls hint
-        tiny = _font(16)
-        hint = "P1: WASD move · J punch · K kick · L SPECIAL   |   P2: Arrows · N/M punch/kick · , SPECIAL"
+        tiny = _font(15)
+        hint = "P1: WASD · J/K punch/kick · L SPECIAL   |   P2: Arrows · N/M · , SPECIAL"
         if self.f2.is_cpu:
-            hint = "P1: WASD move · J punch · K kick · L SPECIAL   |   CPU opponent"
-        self.screen.blit(tiny.render(hint, True, (140, 160, 190)), (40, HEIGHT - 28))
+            hint = "P1: WASD · J/K punch/kick · L SPECIAL   |   CPU"
+        self.screen.blit(tiny.render(hint, True, (200, 210, 230)), (36, HEIGHT - 26))
 
         if self.msg_t > 0 and self.msg:
-            big = _font(72)
-            label = big.render(self.msg, True, GOLD)
-            self.screen.blit(label, (WIDTH // 2 - label.get_width() // 2, HEIGHT // 2 - 60))
+            big = _font(78)
+            label = big.render(self.msg, True, (255, 220, 80))
+            shadow = big.render(self.msg, True, (0, 0, 0))
+            pos = (WIDTH // 2 - label.get_width() // 2, HEIGHT // 2 - 70)
+            self.screen.blit(shadow, (pos[0] + 3, pos[1] + 3))
+            self.screen.blit(label, pos)
 
     def draw_menu(self) -> None:
         self.draw_arena_bg()
@@ -404,47 +413,55 @@ class SiliconFury:
 
     def draw_select(self) -> None:
         self.draw_arena_bg()
+        dim = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        dim.fill((0, 0, 0, 120))
+        self.screen.blit(dim, (0, 0))
         roster = by_team(self.team_filter)
         title = _font(40).render(
             f"{'PLAYER ' + str(self.selecting_for) + ' — ' if self.mode == '1v1' else ''}{self.team_filter}",
             True,
             CYAN if self.team_filter == TEAM_COMPUTER else GOLD,
         )
-        self.screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 36))
+        self.screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 20))
         tip = _font(18).render("←/→ select · TAB switch team · ENTER confirm", True, WHITE)
-        self.screen.blit(tip, (WIDTH // 2 - tip.get_width() // 2, 86))
+        self.screen.blit(tip, (WIDTH // 2 - tip.get_width() // 2, 66))
 
         for i, ch in enumerate(roster):
-            x = 80 + i * 300
-            y = 150
+            x = 40 + i * 310
+            y = 100
             selected = i == self.select_index
-            pygame.draw.rect(self.screen, PANEL, (x, y, 260, 420), border_radius=16)
-            pygame.draw.rect(self.screen, ch.primary if selected else (50, 60, 80), (x, y, 260, 420), 3 if selected else 1, border_radius=16)
-            # Portrait orb
-            pygame.draw.circle(self.screen, ch.secondary, (x + 130, y + 90), 60)
-            pygame.draw.circle(self.screen, ch.primary, (x + 130, y + 90), 48)
-            pygame.draw.circle(self.screen, ch.accent, (x + 130, y + 90), 18)
-            self.screen.blit(_font(36).render(ch.name, True, WHITE), (x + 30, y + 170))
-            self.screen.blit(_font(16).render(ch.tagline[:34], True, (180, 190, 210)), (x + 20, y + 215))
-            self.screen.blit(_font(18).render(ch.special_name, True, ch.accent), (x + 20, y + 250))
-            # Stat bars
+            card = pygame.Rect(x, y, 290, 560)
+            pygame.draw.rect(self.screen, (12, 14, 22), card, border_radius=10)
+            pygame.draw.rect(self.screen, ch.primary if selected else (90, 90, 110), card, 3 if selected else 1, border_radius=10)
+            # Full Tekken-style portrait
+            spr = fighter_sprite(ch.id)
+            portrait = pygame.transform.smoothscale(spr, (200, 320))
+            self.screen.blit(portrait, (x + 45, y + 20))
+            self.screen.blit(_font(34).render(ch.name, True, WHITE), (x + 18, y + 350))
+            self.screen.blit(_font(15).render(ch.tagline[:36], True, (190, 200, 220)), (x + 18, y + 390))
+            self.screen.blit(_font(17).render(ch.special_name, True, ch.accent), (x + 18, y + 415))
             stats = [("HP", ch.hp), ("PWR", ch.power), ("SPD", ch.speed), ("DEF", ch.defense), ("SPC", ch.special)]
             for si, (label, val) in enumerate(stats):
-                sy = y + 290 + si * 22
-                self.screen.blit(_font(14).render(label, True, WHITE), (x + 20, sy))
-                pygame.draw.rect(self.screen, (40, 40, 55), (x + 60, sy + 4, 160, 10), border_radius=3)
-                pygame.draw.rect(self.screen, ch.primary, (x + 60, sy + 4, int(160 * val / 100), 10), border_radius=3)
+                sy = y + 445 + si * 20
+                self.screen.blit(_font(13).render(label, True, WHITE), (x + 18, sy))
+                pygame.draw.rect(self.screen, (40, 40, 55), (x + 55, sy + 3, 200, 10), border_radius=2)
+                pygame.draw.rect(self.screen, ch.primary, (x + 55, sy + 3, int(200 * val / 100), 10), border_radius=2)
 
     def draw_victory(self) -> None:
         self.draw_arena_bg()
+        dim = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        dim.fill((0, 0, 0, 110))
+        self.screen.blit(dim, (0, 0))
         assert self.f1 and self.f2
         winner = self.f1 if self.f1.round_wins >= 2 else self.f2
+        spr = pygame.transform.smoothscale(fighter_sprite(winner.char.id), (260, 420))
+        self.screen.blit(spr, (WIDTH // 2 - 130, 80))
         title = _font(64).render(f"{winner.char.name} WINS", True, GOLD)
-        self.screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 200))
-        special = _font(28).render(winner.char.special_name, True, winner.char.accent)
-        self.screen.blit(special, (WIDTH // 2 - special.get_width() // 2, 290))
-        tip = _font(22).render("ENTER — continue   ESC — menu", True, WHITE)
-        self.screen.blit(tip, (WIDTH // 2 - tip.get_width() // 2, 400))
+        self.screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 520))
+        special = _font(26).render(winner.char.special_name, True, winner.char.accent)
+        self.screen.blit(special, (WIDTH // 2 - special.get_width() // 2, 585))
+        tip = _font(20).render("ENTER — continue   ESC — menu", True, WHITE)
+        self.screen.blit(tip, (WIDTH // 2 - tip.get_width() // 2, 630))
 
     def draw_fight(self) -> None:
         assert self.f1 and self.f2
@@ -512,37 +529,44 @@ class SiliconFury:
         self.p2_char = CHARACTERS[c2]
         self.start_fight(self.p1_char, self.p2_char, p2_cpu=True)
         assert self.f1 and self.f2 and self.cpu
+        # Start in striking range for readable fight footage
+        self.f1.x, self.f2.x = 520, 760
         frames = int(seconds * FPS)
         for i in range(frames):
             for e in pygame.event.get():
                 if e.type == pygame.QUIT:
                     self.running = False
-            # Scripted aggression for spectacle
-            if i % 40 == 0:
+            # Keep them close for continuous exchanges + blood
+            if abs(self.f2.x - self.f1.x) > 160:
                 self.f1.move(1 if self.f2.x > self.f1.x else -1)
-            if i % 55 == 10:
+                self.f2.move(1 if self.f1.x > self.f2.x else -1)
+            if i % 22 == 0:
                 self.f1.punch()
-            if i % 70 == 20:
+            if i % 28 == 8:
                 self.f1.kick()
-            if specials and i in {90, 200, 320}:
+            if i % 26 == 4:
+                self.f2.punch()
+            if i % 34 == 12:
+                self.f2.kick()
+            if specials and i in {80, 180, 280}:
                 self.f1.meter = 100
                 self.f1.special()
                 self.msg = self.f1.char.special_name
                 self.msg_t = 40
                 self.shake = 14
-            if specials and i in {150, 280}:
+            if specials and i in {130, 240}:
                 self.f2.meter = 100
                 self.f2.special()
                 self.msg = self.f2.char.special_name
                 self.msg_t = 40
-            self.cpu.difficulty = 0.85
+            self.cpu.difficulty = 0.9
             self.update_fight()
-            # Keep them alive for demo length unless story KO demo
+            # Stay conscious for demo length (still show damage/blood)
             if self.auto_demo != "05-story-ko":
-                if self.f1.hp < 200:
-                    self.f1.hp = 200
-                if self.f2.hp < 200:
-                    self.f2.hp = 200
+                if self.f1.hp < 120:
+                    self.f1.hp = 120
+                if self.f2.hp < 120:
+                    self.f2.hp = 120
                 self.ko_timer = 0
             self.draw_fight()
             pygame.display.flip()
